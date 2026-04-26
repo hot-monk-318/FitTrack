@@ -4,6 +4,25 @@ const BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const api = axios.create({ baseURL: BASE })
 
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('fittrack_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('fittrack_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(err)
+  }
+)
+
 export const getExercises = (params) => api.get('/api/exercises', { params })
 export const createExercise = (data) => api.post('/api/exercises', data)
 export const deleteExercise = (id) => api.delete(`/api/exercises/${id}`)
@@ -21,8 +40,14 @@ export const getFrequency = (params) => api.get('/api/analytics/frequency', { pa
 export const getFoodTrend = (params) => api.get('/api/analytics/food-trend', { params })
 export const getCaloriesBurned = (params) => api.get('/api/analytics/calories-burned', { params })
 
-export const exportCSV = () => window.open(`${BASE}/api/export/csv`)
-export const exportPDF = () => window.open(`${BASE}/api/export/pdf`)
+export const exportCSV = () => {
+  const token = localStorage.getItem('fittrack_token')
+  window.open(`${BASE}/api/export/csv?token=${token}`)
+}
+export const exportPDF = () => {
+  const token = localStorage.getItem('fittrack_token')
+  window.open(`${BASE}/api/export/pdf?token=${token}`)
+}
 
 export const searchFood = (q) => api.get('/api/food/search', { params: { q } })
 export const getFoodLogs = (date) => api.get('/api/food', { params: { date } })

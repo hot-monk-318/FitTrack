@@ -1,25 +1,28 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from extensions import db
 from models import UserProfile
+from utils.auth import require_auth
 
 profile_bp = Blueprint('profile', __name__)
 
 
 def _get_or_create_profile():
-    p = UserProfile.query.first()
+    p = UserProfile.query.filter_by(user_id=g.current_user.id).first()
     if not p:
-        p = UserProfile()
+        p = UserProfile(user_id=g.current_user.id)
         db.session.add(p)
         db.session.commit()
     return p
 
 
 @profile_bp.route('', methods=['GET'])
+@require_auth
 def get_profile():
     return jsonify(_get_or_create_profile().to_dict())
 
 
 @profile_bp.route('', methods=['PUT'])
+@require_auth
 def update_profile():
     data = request.get_json()
     if not data:

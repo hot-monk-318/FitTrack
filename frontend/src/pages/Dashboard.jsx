@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell } from 'recharts'
-import { getSummary, getWorkouts, getFoodLogs, getProfile } from '../api'
+import { getSummary, getWorkouts, getFoodLogs, getProfile, updateProfile } from '../api'
 import { format, parseISO } from 'date-fns'
+import { useAuth } from '../context/AuthContext'
+
+function greeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
+}
 
 function computeTargetCalories(profile) {
   const { age, gender, height_cm, current_weight_kg, target_weight_kg, activity_level } = profile
@@ -17,6 +25,35 @@ function computeTargetCalories(profile) {
   const dailyAdjustment = Math.min(Math.max(weightDiffKg * 157, -750), 750)
   return Math.round(tdee - dailyAdjustment)
 }
+
+function computeMacroGoals(profile, targetCalories) {
+  if (!profile || !targetCalories || !profile.current_weight_kg) return null
+  const { current_weight_kg, activity_level } = profile
+  const proteinMultiplier = ['active', 'very_active'].includes(activity_level) ? 2.0 : 1.6
+  const protein_g = Math.round(current_weight_kg * proteinMultiplier)
+  const fat_g = Math.round((targetCalories * 0.25) / 9)
+  const carb_g = Math.max(0, Math.round((targetCalories - protein_g * 4 - fat_g * 9) / 4))
+  return { protein_g, fat_g, carb_g }
+}
+
+const ACTIVITY_LEVELS = [
+  { value: 'sedentary', label: 'Sedentary (desk job, no exercise)' },
+  { value: 'light', label: 'Light (1-3 days/week)' },
+  { value: 'moderate', label: 'Moderate (3-5 days/week)' },
+  { value: 'active', label: 'Active (6-7 days/week)' },
+  { value: 'very_active', label: 'Very Active (athlete/physical job)' },
+]
+
+const KG_PER_LB = 0.453592
+const CM_PER_INCH = 2.54
+
+function lbsToKg(lbs) { return Math.round(lbs * KG_PER_LB * 100) / 100 }
+function kgToLbs(kg) { return Math.round(kg / KG_PER_LB * 10) / 10 }
+function cmToFtIn(cm) {
+  const totalIn = cm / CM_PER_INCH
+  return { ft: Math.floor(totalIn / 12), inches: Math.round(totalIn % 12) }
+}
+function ftInToCm(ft, inches) { return Math.round((ft * 12 + inches) * CM_PER_INCH) }
 
 const MACRO_DEFS = [
   { key: 'protein',       label: 'Protein', color: '#3b82f6' },
@@ -205,11 +242,150 @@ function FoodSummaryCard({ calories, targetCalories, protein, carbs, fat, sugar,
   )
 }
 
+function ProfileModal({ profile, onSave, onClose }) {
+  const { ft: initFt, inches: initIn } = cmToFtIn(profile.height_cm || 170)
+  const [form, setForm] = useState({
+    age: profile.age,
+    gender: profile.gender,
+    height_ft: initFt,
+    height_in: initIn,
+    weight_lbs: kgToLbs(profile.current_weight_kg || 70),
+    target_lbs: kgToLbs(profile.target_weight_kg || 70),
+    activity_level: profile.activity_level,
+  })
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }))
+
+  const toMetric = (f) => ({
+    age: f.age,
+    gender: f.gender,
+    activity_level: f.activity_level,
+    height_cm: ftInToCm(f.height_ft || 0, f.height_in || 0),
+    current_weight_kg: lbsToKg(f.weight_lbs || 0),
+    target_weight_kg: lbsToKg(f.target_lbs || 0),
+  })
+
+  const metricForm = toMetric(form)
+  const previewCal = form.age && (form.height_ft || form.height_in) && form.weight_lbs
+    ? computeTargetCalories(metricForm)
+    : null
+  const previewMacros = previewCal ? computeMacroGoals(metricForm, previewCal) : null
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-end md:items-center justify-center p-4">
+      <div className="bg-ft-card border border-ft-border rounded-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-white">Profile & Goals</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500 mb-1 block">Age</label>
+              <input type="number" value={form.age || ''} onChange={(e) => set('age', parseInt(e.target.value) || '')}
+                className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500" min="10" max="100" />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500 mb-1 block">Gender</label>
+              <select value={form.gender} onChange={(e) => set('gender', e.target.value)}
+                className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-500 mb-1 block">Height</label>
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <input type="number" value={form.height_ft ?? ''} onChange={(e) => set('height_ft', parseInt(e.target.value) || 0)}
+                  className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 pr-8" min="3" max="8" />
+                <span className="absolute right-3 top-2 text-xs text-zinc-500">ft</span>
+              </div>
+              <div className="flex-1 relative">
+                <input type="number" value={form.height_in ?? ''} onChange={(e) => set('height_in', parseInt(e.target.value) || 0)}
+                  className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 pr-8" min="0" max="11" />
+                <span className="absolute right-3 top-2 text-xs text-zinc-500">in</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <label className="text-xs text-zinc-500 mb-1 block">Current Weight</label>
+              <input type="number" value={form.weight_lbs ?? ''} onChange={(e) => set('weight_lbs', parseFloat(e.target.value) || '')}
+                className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 pr-9" min="60" max="700" step="0.5" />
+              <span className="absolute right-3 bottom-2 text-xs text-zinc-500">lbs</span>
+            </div>
+            <div className="flex-1 relative">
+              <label className="text-xs text-zinc-500 mb-1 block">Target Weight</label>
+              <input type="number" value={form.target_lbs ?? ''} onChange={(e) => set('target_lbs', parseFloat(e.target.value) || '')}
+                className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500 pr-9" min="60" max="700" step="0.5" />
+              <span className="absolute right-3 bottom-2 text-xs text-zinc-500">lbs</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-500 mb-1 block">Activity Level</label>
+            <select value={form.activity_level} onChange={(e) => set('activity_level', e.target.value)}
+              className="w-full bg-ft-surface border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-green-500">
+              {ACTIVITY_LEVELS.map((a) => (
+                <option key={a.value} value={a.value}>{a.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {previewCal && (
+            <div className="bg-ft-surface rounded-lg px-4 py-3">
+              <p className="text-xs text-zinc-500 mb-2 text-center">Estimated Daily Goals</p>
+              <p className="text-2xl font-bold text-green-400 text-center mb-1">
+                {previewCal.toLocaleString()} cal
+              </p>
+              {form.weight_lbs !== form.target_lbs && (
+                <p className="text-xs text-zinc-500 text-center mb-3">
+                  {form.weight_lbs > form.target_lbs ? 'Deficit' : 'Surplus'} to reach {form.target_lbs} lbs
+                </p>
+              )}
+              {previewMacros && (
+                <div className="grid grid-cols-3 gap-3 pt-2 border-t border-zinc-700">
+                  <div className="text-center">
+                    <p className="text-xs text-zinc-500">Protein</p>
+                    <p className="text-base font-bold text-blue-400">{previewMacros.protein_g}g</p>
+                    <p className="text-xs text-zinc-600">{previewMacros.protein_g * 4} cal</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-zinc-500">Carbs</p>
+                    <p className="text-base font-bold text-yellow-400">{previewMacros.carb_g}g</p>
+                    <p className="text-xs text-zinc-600">{previewMacros.carb_g * 4} cal</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-zinc-500">Fat</p>
+                    <p className="text-base font-bold text-orange-400">{previewMacros.fat_g}g</p>
+                    <p className="text-xs text-zinc-600">{previewMacros.fat_g * 9} cal</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={() => onSave(toMetric(form))}
+          className="w-full mt-4 bg-green-500 hover:bg-green-400 text-black font-bold py-3 rounded-xl transition-colors"
+        >
+          Save Profile
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
+  const { user } = useAuth()
   const [summary, setSummary] = useState(null)
   const [recentWorkouts, setRecentWorkouts] = useState([])
   const [foodData, setFoodData] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [showProfile, setShowProfile] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -245,10 +421,27 @@ export default function Dashboard() {
   const targetCalories = profile ? computeTargetCalories(profile) : null
   const todayWorkouts = recentWorkouts.filter((w) => w.date.startsWith(today))
   const caloriesBurnedToday = summary?.calories_burned_today || 0
+  const handleSaveProfile = async (data) => {
+    const res = await updateProfile(data)
+    setProfile(res.data)
+    setShowProfile(false)
+  }
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold text-white mb-6">Dashboard</h2>
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-white">
+          {greeting()}, {user?.first_name || 'there'} 👋
+        </h2>
+        <div className="mt-2">
+          <button
+            onClick={() => setShowProfile(true)}
+            className="inline-flex items-center text-xs text-zinc-400 hover:text-green-400 border border-zinc-700 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            ⚙ Profile
+          </button>
+        </div>
+      </div>
 
       <WorkoutSummaryCard
         todayWorkouts={todayWorkouts}
@@ -264,6 +457,14 @@ export default function Dashboard() {
           fat={foodData.fat}
           sugar={foodData.sugar}
           caloriesBurnedToday={caloriesBurnedToday}
+        />
+      )}
+
+      {showProfile && profile && (
+        <ProfileModal
+          profile={profile}
+          onSave={handleSaveProfile}
+          onClose={() => setShowProfile(false)}
         />
       )}
     </div>

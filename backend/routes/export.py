@@ -1,15 +1,17 @@
-from flask import Blueprint, make_response
+from flask import Blueprint, make_response, g
 from models import Workout
 from datetime import datetime
 import csv
 import io
+from utils.auth import require_auth
 
 export_bp = Blueprint('export', __name__)
 
 
 @export_bp.route('/csv', methods=['GET'])
+@require_auth
 def export_csv():
-    workouts = Workout.query.order_by(Workout.date.desc()).all()
+    workouts = Workout.query.filter_by(user_id=g.current_user.id).order_by(Workout.date.desc()).all()
 
     out = io.StringIO()
     writer = csv.writer(out)
@@ -43,6 +45,7 @@ def export_csv():
 
 
 @export_bp.route('/pdf', methods=['GET'])
+@require_auth
 def export_pdf():
     try:
         from reportlab.lib.pagesizes import letter
@@ -70,7 +73,7 @@ def export_pdf():
         Spacer(1, 0.2 * inch),
     ]
 
-    workouts = Workout.query.order_by(Workout.date.desc()).limit(50).all()
+    workouts = Workout.query.filter_by(user_id=g.current_user.id).order_by(Workout.date.desc()).limit(50).all()
 
     for workout in workouts:
         story.append(Paragraph(
@@ -102,8 +105,6 @@ def export_pdf():
             ]))
             story.append(t)
 
-        if workout.notes:
-            story.append(Paragraph(f'Notes: {workout.notes}', styles['Italic']))
         story.append(Spacer(1, 0.1 * inch))
 
     doc.build(story)

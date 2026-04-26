@@ -1,8 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from extensions import db
 from models import Workout, WorkoutExercise, Set, Exercise, UserProfile
 from datetime import datetime
 from met_lookup import compute_workout_calories
+from utils.auth import require_auth
 
 
 def _parse_date(s):
@@ -13,10 +14,11 @@ workouts_bp = Blueprint('workouts', __name__)
 
 
 @workouts_bp.route('', methods=['GET'])
+@require_auth
 def get_workouts():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    pag = Workout.query.order_by(Workout.date.desc()).paginate(
+    pag = Workout.query.filter_by(user_id=g.current_user.id).order_by(Workout.date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
     return jsonify({
@@ -28,9 +30,10 @@ def get_workouts():
 
 
 @workouts_bp.route('/<int:workout_id>', methods=['GET'])
+@require_auth
 def get_workout(workout_id):
-    workout = Workout.query.get_or_404(workout_id)
-    profile = UserProfile.query.first()
+    workout = Workout.query.filter_by(id=workout_id, user_id=g.current_user.id).first_or_404()
+    profile = UserProfile.query.filter_by(user_id=g.current_user.id).first()
     weight_kg = (profile.current_weight_kg if profile else None) or 70.0
     d = workout.to_dict()
     d['calories_burned'] = compute_workout_calories(workout, weight_kg)
@@ -38,6 +41,7 @@ def get_workout(workout_id):
 
 
 @workouts_bp.route('', methods=['POST'])
+@require_auth
 def create_workout():
     data = request.get_json()
     if not data:
@@ -47,6 +51,7 @@ def create_workout():
         name=data.get('name', 'Workout'),
         workout_type=data.get('workout_type', 'strength'),
         date=_parse_date(data['date']) if data.get('date') else datetime.utcnow(),
+        user_id=g.current_user.id,
     )
     db.session.add(workout)
     db.session.flush()
@@ -77,8 +82,9 @@ def create_workout():
 
 
 @workouts_bp.route('/<int:workout_id>', methods=['PUT'])
+@require_auth
 def update_workout(workout_id):
-    workout = Workout.query.get_or_404(workout_id)
+    workout = Workout.query.filter_by(id=workout_id, user_id=g.current_user.id).first_or_404()
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
@@ -93,8 +99,9 @@ def update_workout(workout_id):
 
 
 @workouts_bp.route('/<int:workout_id>', methods=['DELETE'])
+@require_auth
 def delete_workout(workout_id):
-    workout = Workout.query.get_or_404(workout_id)
+    workout = Workout.query.filter_by(id=workout_id, user_id=g.current_user.id).first_or_404()
     db.session.delete(workout)
     db.session.commit()
     return '', 204

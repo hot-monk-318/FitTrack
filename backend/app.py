@@ -32,6 +32,7 @@ def create_app():
     from routes.export import export_bp
     from routes.food import food_bp
     from routes.profile import profile_bp
+    from routes.auth import auth_bp
 
     app.register_blueprint(exercises_bp, url_prefix='/api/exercises')
     app.register_blueprint(workouts_bp, url_prefix='/api/workouts')
@@ -39,6 +40,7 @@ def create_app():
     app.register_blueprint(export_bp, url_prefix='/api/export')
     app.register_blueprint(food_bp, url_prefix='/api/food')
     app.register_blueprint(profile_bp, url_prefix='/api/profile')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
 
     with app.app_context():
         db.create_all()
@@ -54,14 +56,21 @@ def create_app():
 
 def _migrate_db(db):
     from sqlalchemy import text
-    new_cols = [
-        ('protein', 'REAL'), ('carbs', 'REAL'), ('fat', 'REAL'),
-        ('sugar_total', 'REAL'), ('sugar_added', 'REAL'),
+    additions = [
+        ('food_logs', 'protein', 'REAL', '0'),
+        ('food_logs', 'carbs', 'REAL', '0'),
+        ('food_logs', 'fat', 'REAL', '0'),
+        ('food_logs', 'sugar_total', 'REAL', '0'),
+        ('food_logs', 'sugar_added', 'REAL', '0'),
+        ('workouts', 'user_id', 'INTEGER', 'NULL'),
+        ('food_logs', 'user_id', 'INTEGER', 'NULL'),
+        ('user_profile', 'user_id', 'INTEGER', 'NULL'),
+        ('exercises', 'user_id', 'INTEGER', 'NULL'),
     ]
     with db.engine.connect() as conn:
-        for col, col_type in new_cols:
+        for table, col, col_type, default in additions:
             try:
-                conn.execute(text(f'ALTER TABLE food_logs ADD COLUMN {col} {col_type} DEFAULT 0'))
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type} DEFAULT {default}'))
                 conn.commit()
             except Exception:
                 pass  # column already exists

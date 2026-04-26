@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 const navItems = [
   { to: '/', label: 'Home',    emoji: '🏠' },
@@ -7,7 +8,21 @@ const navItems = [
   { to: '/analytics', label: 'Charts', emoji: '📊' },
 ]
 
+function Avatar({ user, size = 'md' }) {
+  const initials = [user?.first_name?.[0], user?.last_name?.[0]].filter(Boolean).join('').toUpperCase()
+  const cls = size === 'sm'
+    ? 'w-7 h-7 text-xs'
+    : 'w-9 h-9 text-sm'
+  return (
+    <div className={`${cls} rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-300 font-bold shrink-0`}>
+      {initials || '?'}
+    </div>
+  )
+}
+
 export default function Navbar() {
+  const { user, logout } = useAuth()
+
   return (
     <>
       {/* ── Desktop sidebar ── */}
@@ -36,13 +51,41 @@ export default function Navbar() {
             {item.label}
           </NavLink>
         ))}
+
+        {/* Profile section at bottom */}
+        <div className="mt-auto pt-4 border-t border-ft-border">
+          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl">
+            <Avatar user={user} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate leading-tight">
+                {user?.first_name} {user?.last_name}
+              </p>
+              <button
+                onClick={logout}
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors leading-tight mt-0.5"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
       </nav>
 
       {/* ── Mobile top bar ── */}
-      <div className="md:hidden flex items-center px-4 py-3 bg-ft-card/95 border-b border-ft-border sticky top-0 z-40 backdrop-blur-sm">
+      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-ft-card/95 border-b border-ft-border sticky top-0 z-40 backdrop-blur-sm">
         <h1 className="text-lg font-black bg-gradient-to-r from-green-400 to-violet-400 bg-clip-text text-transparent">
           FitTrack
         </h1>
+        <button
+          onClick={logout}
+          className="flex items-center gap-2 group"
+          title={`${user?.first_name} ${user?.last_name} — tap to sign out`}
+        >
+          <span className="text-xs text-zinc-600 group-hover:text-zinc-400 transition-colors hidden xs:block">
+            {user?.first_name}
+          </span>
+          <Avatar user={user} size="sm" />
+        </button>
       </div>
 
       {/* ── Mobile bottom nav ── */}

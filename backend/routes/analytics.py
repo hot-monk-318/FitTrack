@@ -1,14 +1,16 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from extensions import db
 from models import Workout, WorkoutExercise, Set, Exercise, FoodLog, UserProfile
 from sqlalchemy import func
 from datetime import datetime, timedelta, date as date_type
 from met_lookup import compute_workout_calories
+from utils.auth import require_auth
 
 analytics_bp = Blueprint('analytics', __name__)
 
 
 @analytics_bp.route('/volume', methods=['GET'])
+@require_auth
 def get_volume():
     days = request.args.get('days', 90, type=int)
     exercise_id = request.args.get('exercise_id', type=int)
@@ -18,7 +20,7 @@ def get_volume():
         db.session.query(Workout.id, Workout.date, func.sum(Set.weight * Set.reps).label('volume'))
         .join(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
         .join(Set, Set.workout_exercise_id == WorkoutExercise.id)
-        .filter(Workout.date >= since, Set.completed == True)
+        .filter(Workout.user_id == g.current_user.id, Workout.date >= since, Set.completed == True)
     )
     if exercise_id:
         q = q.filter(WorkoutExercise.exercise_id == exercise_id)
@@ -28,6 +30,7 @@ def get_volume():
 
 
 @analytics_bp.route('/strength', methods=['GET'])
+@require_auth
 def get_strength():
     days = request.args.get('days', 90, type=int)
     exercise_id = request.args.get('exercise_id', type=int)
@@ -43,7 +46,7 @@ def get_strength():
         .join(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
         .join(Set, Set.workout_exercise_id == WorkoutExercise.id)
         .join(Exercise, Exercise.id == WorkoutExercise.exercise_id)
-        .filter(Workout.date >= since, Set.completed == True)
+        .filter(Workout.user_id == g.current_user.id, Workout.date >= since, Set.completed == True)
     )
     if exercise_id:
         q = q.filter(WorkoutExercise.exercise_id == exercise_id)
@@ -61,26 +64,34 @@ def get_strength():
 
 
 @analytics_bp.route('/summary', methods=['GET'])
+@require_auth
 def get_summary():
-    total_workouts = Workout.query.count()
+    uid = g.current_user.id
+    total_workouts = Workout.query.filter_by(user_id=uid).count()
     week_ago = datetime.utcnow() - timedelta(days=7)
-    workouts_this_week = Workout.query.filter(Workout.date >= week_ago).count()
+    workouts_this_week = Workout.query.filter(Workout.user_id == uid, Workout.date >= week_ago).count()
     total_volume = (
-        db.session.query(func.sum(Set.weight * Set.reps)).filter(Set.completed == True).scalar() or 0
+        db.session.query(func.sum(Set.weight * Set.reps))
+        .join(WorkoutExercise, WorkoutExercise.id == Set.workout_exercise_id)
+        .join(Workout, Workout.id == WorkoutExercise.workout_id)
+        .filter(Workout.user_id == uid, Set.completed == True)
+        .scalar() or 0
     )
     most_logged = (
         db.session.query(Exercise.name, func.count(WorkoutExercise.id).label('cnt'))
         .join(WorkoutExercise, WorkoutExercise.exercise_id == Exercise.id)
+        .join(Workout, Workout.id == WorkoutExercise.workout_id)
+        .filter(Workout.user_id == uid)
         .group_by(Exercise.id)
         .order_by(func.count(WorkoutExercise.id).desc())
         .first()
     )
 
     # Calories burned today using MET values from 2024 Compendium
-    profile = UserProfile.query.first()
+    profile = UserProfile.query.filter_by(user_id=uid).first()
     weight_kg = profile.current_weight_kg if profile else None
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_workouts = Workout.query.filter(Workout.date >= today_start).all()
+    today_workouts = Workout.query.filter(Workout.user_id == uid, Workout.date >= today_start).all()
     calories_burned_today = (
         sum(compute_workout_calories(w, weight_kg) for w in today_workouts)
         if weight_kg else None
@@ -96,12 +107,14 @@ def get_summary():
 
 
 @analytics_bp.route('/calories-burned', methods=['GET'])
+@require_auth
 def get_calories_burned():
     days = request.args.get('days', 30, type=int)
     since = datetime.utcnow() - timedelta(days=days)
-    profile = UserProfile.query.first()
+    uid = g.current_user.id
+    profile = UserProfile.query.filter_by(user_id=uid).first()
     weight_kg = (profile.current_weight_kg if profile else None) or 70.0
-    workouts = Workout.query.filter(Workout.date >= since).all()
+    workouts = Workout.query.filter(Workout.user_id == uid, Workout.date >= since).all()
 
     daily = {}
     for w in workouts:
@@ -113,10 +126,14 @@ def get_calories_burned():
 
 
 @analytics_bp.route('/food-trend', methods=['GET'])
+@require_auth
 def get_food_trend():
     days = request.args.get('days', 30, type=int)
     since = date_type.today() - timedelta(days=days)
-    logs = FoodLog.query.filter(FoodLog.date >= since).order_by(FoodLog.date).all()
+    logs = FoodLog.query.filter(
+        FoodLog.user_id == g.current_user.id,
+        FoodLog.date >= since,
+    ).order_by(FoodLog.date).all()
 
     daily = {}
     for log in logs:
@@ -137,10 +154,14 @@ def get_food_trend():
 
 
 @analytics_bp.route('/frequency', methods=['GET'])
+@require_auth
 def get_frequency():
     weeks = request.args.get('weeks', 12, type=int)
     since = datetime.utcnow() - timedelta(weeks=weeks)
-    workouts = Workout.query.filter(Workout.date >= since).order_by(Workout.date).all()
+    workouts = Workout.query.filter(
+        Workout.user_id == g.current_user.id,
+        Workout.date >= since,
+    ).order_by(Workout.date).all()
 
     week_counts = {}
     for w in workouts:

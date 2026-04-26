@@ -7,3 +7,13 @@ body {
   background-attachment: fixed;
   min-height: 100vh;
 }
+
+/* Prevent browser autofill from flashing a white background over dark inputs */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: white;
+  -webkit-box-shadow: 0 0 0 30px #1e1a35 inset;
+  caret-color: white;
+}

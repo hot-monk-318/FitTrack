@@ -2,6 +2,24 @@ from extensions import db
 from datetime import datetime, date as date_type
 
 
+class User(db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    first_name = db.Column(db.String(50), nullable=False)
+    last_name = db.Column(db.String(50), nullable=False, default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+        }
+
+
 class Exercise(db.Model):
     __tablename__ = 'exercises'
     id = db.Column(db.Integer, primary_key=True)
@@ -9,6 +27,7 @@ class Exercise(db.Model):
     category = db.Column(db.String(50), default='other')
     muscle_group = db.Column(db.String(50), default='other')
     is_custom = db.Column(db.Boolean, default=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     def to_dict(self):
         return {
@@ -26,6 +45,7 @@ class Workout(db.Model):
     name = db.Column(db.String(100), default='Workout')
     workout_type = db.Column(db.String(50), default='strength')
     date = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     exercises = db.relationship(
         'WorkoutExercise',
         back_populates='workout',
@@ -58,6 +78,7 @@ class FoodLog(db.Model):
     sugar_total = db.Column(db.Float, default=0)
     sugar_added = db.Column(db.Float, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     def to_dict(self):
         return {
@@ -77,6 +98,7 @@ class FoodLog(db.Model):
 class UserProfile(db.Model):
     __tablename__ = 'user_profile'
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     age = db.Column(db.Integer, default=25)
     gender = db.Column(db.String(10), default='male')
     height_cm = db.Column(db.Float, default=170)

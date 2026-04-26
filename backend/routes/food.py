@@ -1,14 +1,16 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from extensions import db
 from models import FoodLog
 from datetime import date as date_type
 import os
 import requests as http
+from utils.auth import require_auth
 
 food_bp = Blueprint('food', __name__)
 
 
 @food_bp.route('/search', methods=['GET'])
+@require_auth
 def search_food():
     query = request.args.get('q', '').strip()
     if not query or len(query) < 2:
@@ -46,6 +48,7 @@ def search_food():
             grams = m.get('gramWeight', 0)
             if label and grams and 'not specified' not in label.lower():
                 servings.append({'label': label, 'grams': round(grams, 1)})
+        servings.sort(key=lambda s: s['grams'])
 
         results.append({
             'name': food.get('description', ''),
@@ -63,17 +66,19 @@ def search_food():
 
 
 @food_bp.route('', methods=['GET'])
+@require_auth
 def get_food_logs():
     date_str = request.args.get('date', date_type.today().isoformat())
     try:
         log_date = date_type.fromisoformat(date_str)
     except ValueError:
         return jsonify({'error': 'Invalid date'}), 400
-    logs = FoodLog.query.filter_by(date=log_date).order_by(FoodLog.created_at).all()
+    logs = FoodLog.query.filter_by(user_id=g.current_user.id, date=log_date).order_by(FoodLog.created_at).all()
     return jsonify([l.to_dict() for l in logs])
 
 
 @food_bp.route('', methods=['POST'])
+@require_auth
 def create_food_log():
     data = request.get_json()
     if not data:
@@ -93,6 +98,7 @@ def create_food_log():
         fat=float(data.get('fat', 0)),
         sugar_total=float(data.get('sugar_total', 0)),
         sugar_added=float(data.get('sugar_added', 0)),
+        user_id=g.current_user.id,
     )
     db.session.add(log)
     db.session.commit()
@@ -100,8 +106,9 @@ def create_food_log():
 
 
 @food_bp.route('/<int:log_id>', methods=['PUT'])
+@require_auth
 def update_food_log(log_id):
-    log = FoodLog.query.get_or_404(log_id)
+    log = FoodLog.query.filter_by(id=log_id, user_id=g.current_user.id).first_or_404()
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data provided'}), 400
@@ -126,8 +133,9 @@ def update_food_log(log_id):
 
 
 @food_bp.route('/<int:log_id>', methods=['DELETE'])
+@require_auth
 def delete_food_log(log_id):
-    log = FoodLog.query.get_or_404(log_id)
+    log = FoodLog.query.filter_by(id=log_id, user_id=g.current_user.id).first_or_404()
     db.session.delete(log)
     db.session.commit()
     return '', 204
