@@ -20,6 +20,40 @@ class User(db.Model):
         }
 
 
+class FriendConnection(db.Model):
+    __tablename__ = 'friend_connections'
+    id = db.Column(db.Integer, primary_key=True)
+    requester_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    addressee_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending | accepted
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    requester = db.relationship('User', foreign_keys=[requester_id])
+    addressee = db.relationship('User', foreign_keys=[addressee_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'requester_id': self.requester_id,
+            'addressee_id': self.addressee_id,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'requester': self.requester.to_dict() if self.requester else None,
+            'addressee': self.addressee.to_dict() if self.addressee else None,
+        }
+
+
+class LeaderboardSelection(db.Model):
+    __tablename__ = 'leaderboard_selections'
+    id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    owner = db.relationship('User', foreign_keys=[owner_user_id])
+    target = db.relationship('User', foreign_keys=[target_user_id])
+
+
 class Exercise(db.Model):
     __tablename__ = 'exercises'
     id = db.Column(db.Integer, primary_key=True)

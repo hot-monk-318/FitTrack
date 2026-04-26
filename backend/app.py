@@ -33,6 +33,7 @@ def create_app():
     from routes.food import food_bp
     from routes.profile import profile_bp
     from routes.auth import auth_bp
+    from routes.leaderboard import leaderboard_bp
 
     app.register_blueprint(exercises_bp, url_prefix='/api/exercises')
     app.register_blueprint(workouts_bp, url_prefix='/api/workouts')
@@ -41,6 +42,7 @@ def create_app():
     app.register_blueprint(food_bp, url_prefix='/api/food')
     app.register_blueprint(profile_bp, url_prefix='/api/profile')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(leaderboard_bp, url_prefix='/api/leaderboard')
 
     with app.app_context():
         db.create_all()
