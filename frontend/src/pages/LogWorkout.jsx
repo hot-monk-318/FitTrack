@@ -12,6 +12,13 @@ const WORKOUT_TYPES = [
   { value: 'yoga',     label: 'Yoga',     emoji: '🧘' },
 ]
 
+const WORKOUT_TEMPLATES = [
+  { id: 'push', label: 'Push Day', workoutType: 'strength', exerciseNames: ['Bench Press', 'Shoulder Press', 'Tricep Pushdown'] },
+  { id: 'pull', label: 'Pull Day', workoutType: 'strength', exerciseNames: ['Lat Pulldown', 'Seated Cable Row', 'Dumbbell Curl'] },
+  { id: 'legs', label: 'Leg Day', workoutType: 'strength', exerciseNames: ['Squat', 'Leg Press', 'Leg Curl'] },
+  { id: 'full', label: 'Full Body', workoutType: 'strength', exerciseNames: ['Squat', 'Bench Press', 'Seated Cable Row'] },
+]
+
 // MET values from 2024 Compendium — mirrors backend met_lookup.py
 const EXERCISE_MET = {
   walking: 3.5, jogging: 7.0, running: 8.0, cycling: 4.0,
@@ -54,7 +61,7 @@ const CATEGORY_COLOR = {
   other:      'text-zinc-400',
 }
 
-function SetRow({ set, onChange, onRemove, isCardio }) {
+function SetRow({ set, onChange, onRemove, isCardio, onCompleteSet }) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-zinc-600 text-xs w-5 text-center font-mono">{set.set_number}</span>
@@ -84,6 +91,19 @@ function SetRow({ set, onChange, onRemove, isCardio }) {
           : set.weight && set.reps ? `${Math.round(set.weight * set.reps)}lb` : '—'}
       </span>
       <button
+        onClick={() => {
+          onChange({ ...set, completed: true })
+          onCompleteSet()
+        }}
+        className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
+          set.completed
+            ? 'border-green-500/40 bg-green-500/10 text-green-400'
+            : 'border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500'
+        }`}
+      >
+        ✓
+      </button>
+      <button
         onClick={onRemove}
         className="text-zinc-700 hover:text-red-400 text-xl w-6 shrink-0 transition-colors"
       >
@@ -93,7 +113,7 @@ function SetRow({ set, onChange, onRemove, isCardio }) {
   )
 }
 
-function ExerciseBlock({ we, onUpdate, onRemove }) {
+function ExerciseBlock({ we, onUpdate, onRemove, onSetCompleted }) {
   const addSet = () => {
     const last = we.sets.at(-1)
     onUpdate({
@@ -152,6 +172,7 @@ function ExerciseBlock({ we, onUpdate, onRemove }) {
               isCardio={isCardio}
               onChange={(u) => updateSet(i, u)}
               onRemove={() => removeSet(i)}
+              onCompleteSet={onSetCompleted}
             />
           ))}
         </div>
@@ -162,6 +183,19 @@ function ExerciseBlock({ we, onUpdate, onRemove }) {
         >
           + Add Set
         </button>
+        {we.sets.length > 1 && (
+          <button
+            onClick={() => {
+              const last = we.sets.at(-1)
+              const prev = we.sets.at(-2)
+              if (!last || !prev) return
+              updateSet(we.sets.length - 1, { ...last, weight: prev.weight || 0, reps: prev.reps || 0 })
+            }}
+            className="w-full mt-2 py-2 text-xs text-zinc-300 border border-zinc-700 rounded-lg hover:border-zinc-500 hover:bg-ft-surface transition-all"
+          >
+            Copy Previous Set
+          </button>
+        )}
       </div>
     </div>
   )
@@ -177,6 +211,9 @@ export default function LogWorkout() {
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [weightKg, setWeightKg] = useState(70)
+  const [restSeconds, setRestSeconds] = useState(0)
+  const [restRunning, setRestRunning] = useState(false)
+  const [restDuration, setRestDuration] = useState(90)
 
   useEffect(() => {
     getExercises().then((res) => setExercises(res.data))
@@ -184,6 +221,20 @@ export default function LogWorkout() {
       .then((res) => { if (res.data?.current_weight_kg) setWeightKg(res.data.current_weight_kg) })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!restRunning || restSeconds <= 0) return
+    const t = setInterval(() => {
+      setRestSeconds((s) => {
+        if (s <= 1) {
+          setRestRunning(false)
+          return 0
+        }
+        return s - 1
+      })
+    }, 1000)
+    return () => clearInterval(t)
+  }, [restRunning, restSeconds])
 
   const estCalories = estimateCalories(workoutExercises, weightKg)
 
@@ -198,6 +249,30 @@ export default function LogWorkout() {
     ])
     setShowPicker(false)
     setSearch('')
+  }
+
+  const addExerciseIfMissing = (exercise) => {
+    setWorkoutExercises((prev) => {
+      if (prev.some((p) => p.exercise_id === exercise.id)) return prev
+      return [
+        ...prev,
+        { exercise, exercise_id: exercise.id, sets: [{ set_number: 1, weight: 0, reps: 0, completed: false }] },
+      ]
+    })
+  }
+
+  const applyTemplate = (template) => {
+    setWorkoutType(template.workoutType)
+    const byName = new Map(exercises.map((e) => [e.name.toLowerCase(), e]))
+    template.exerciseNames.forEach((name) => {
+      const ex = byName.get(name.toLowerCase())
+      if (ex) addExerciseIfMissing(ex)
+    })
+  }
+
+  const startRestTimer = () => {
+    setRestSeconds(restDuration)
+    setRestRunning(true)
   }
 
   const save = async () => {
@@ -252,6 +327,60 @@ export default function LogWorkout() {
         ))}
       </div>
 
+      {/* Template quick start */}
+      <div className="mb-5">
+        <p className="text-xs text-zinc-500 mb-2 uppercase tracking-wider">Quick Start Templates</p>
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+          {WORKOUT_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => applyTemplate(t)}
+              className="shrink-0 px-3 py-2 rounded-lg bg-ft-card border border-ft-border text-zinc-300 text-xs font-semibold hover:border-zinc-500 hover:text-white transition-all"
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Rest timer */}
+      <div className="bg-ft-card border border-ft-border rounded-xl px-4 py-3 mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-zinc-500 uppercase tracking-wider">Rest Timer</p>
+            <p className={`text-lg font-bold ${restSeconds > 0 ? 'text-green-400' : 'text-zinc-300'}`}>
+              {restSeconds > 0 ? `${Math.floor(restSeconds / 60)}:${String(restSeconds % 60).padStart(2, '0')}` : 'Ready'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={restDuration}
+              onChange={(e) => setRestDuration(parseInt(e.target.value))}
+              className="bg-ft-surface border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500"
+            >
+              <option value={60}>60s</option>
+              <option value={90}>90s</option>
+              <option value={120}>120s</option>
+            </select>
+            <button
+              onClick={() => {
+                setRestSeconds(restDuration)
+                setRestRunning(true)
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs bg-violet-500 text-white font-semibold hover:bg-violet-400"
+            >
+              Start
+            </button>
+            <button
+              onClick={() => { setRestRunning(false); setRestSeconds(0) }}
+              className="px-3 py-1.5 rounded-lg text-xs border border-zinc-700 text-zinc-400 hover:text-zinc-200"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Added exercises */}
       {workoutExercises.map((we, i) => (
         <ExerciseBlock
@@ -259,6 +388,7 @@ export default function LogWorkout() {
           we={we}
           onUpdate={(u) => setWorkoutExercises((prev) => prev.map((e, idx) => (idx === i ? u : e)))}
           onRemove={() => setWorkoutExercises((prev) => prev.filter((_, idx) => idx !== i))}
+          onSetCompleted={startRestTimer}
         />
       ))}
 

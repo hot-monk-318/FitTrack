@@ -6,6 +6,7 @@ const navItems = [
   { to: '/log',      label: 'Workout', emoji: '💪' },
   { to: '/food',     label: 'Food',    emoji: '🥗' },
   { to: '/analytics', label: 'Charts', emoji: '📊' },
+  { to: '/leaderboard', label: 'Board', emoji: '🏆' },
 ]
 
 function Avatar({ user, size = 'md' }) {

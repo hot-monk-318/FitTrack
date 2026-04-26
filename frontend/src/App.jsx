@@ -7,6 +7,7 @@ import History from './pages/History'
 import Analytics from './pages/Analytics'
 import Export from './pages/Export'
 import FoodLog from './pages/FoodLog'
+import Leaderboard from './pages/Leaderboard'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 
@@ -44,6 +45,7 @@ function AppRoutes() {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/export" element={<Export />} />
           <Route path="/food" element={<FoodLog />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

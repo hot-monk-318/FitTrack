@@ -58,4 +58,13 @@ export const deleteFoodLog = (id) => api.delete(`/api/food/${id}`)
 export const getProfile = () => api.get('/api/profile')
 export const updateProfile = (data) => api.put('/api/profile', data)
 
+export const searchLeaderboardUsers = (q) => api.get('/api/leaderboard/users/search', { params: { q } })
+export const getLeaderboardConnections = () => api.get('/api/leaderboard/connections')
+export const requestLeaderboardConnection = (user_id) => api.post('/api/leaderboard/connections/request', { user_id })
+export const acceptLeaderboardConnection = (connectionId) => api.post(`/api/leaderboard/connections/${connectionId}/accept`)
+export const deleteLeaderboardConnection = (connectionId) => api.delete(`/api/leaderboard/connections/${connectionId}`)
+export const getLeaderboardSettings = () => api.get('/api/leaderboard/settings')
+export const updateLeaderboardSettings = (selected_user_ids) => api.put('/api/leaderboard/settings', { selected_user_ids })
+export const getLeaderboardRankings = (days = 7) => api.get('/api/leaderboard/rankings', { params: { days } })
+
 export default api
